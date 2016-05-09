@@ -1,0 +1,54 @@
+#Resource:
+#Heteroscedastic Censored and Truncated Regression with crch
+#by Jakob W. Messner, Georg J. Mayr, and Achim Zeileis
+#url : https://journal.r-project.org/archive/accepted/messner-mayr-zeileis.pdf
+
+library("crch")
+data("RainIbk", package = "crch")
+RainIbk <- sqrt(RainIbk)
+RainIbk$ensmean <- apply(RainIbk[,grep('^rainfc',names(RainIbk))], 1, mean)
+RainIbk$enssd <- apply(RainIbk[,grep('^rainfc',names(RainIbk))], 1, sd)
+RainIbk <- subset(RainIbk, enssd > 0)
+plot(rain ~ ensmean, data = RainIbk, pch = 19, col = gray(0, alpha = 0.2))
+abline(0,1, col = "red")
+CRCH <- crch(rain ~ ensmean | log(enssd), data = RainIbk, left = 0,
+              dist = "logistic")
+summary(CRCH)
+abline(coef(CRCH)[1:2], col = "blue")
+CR <- crch(rain ~ ensmean, data = RainIbk, left = 0, dist = "logistic")
+cbind(AIC(CR, CRCH), BIC = BIC(CR, CRCH)[,2])
+CRCHgau <- crch(rain ~ ensmean | log(enssd), data = RainIbk, left = 0,
+                 dist = "gaussian")
+CRCHstud <- crch(rain ~ ensmean | log(enssd), data = RainIbk, left = 0,
+                  dist = "student")
+AIC(CRCH, CRCHgau, CRCHstud)
+library("glmx")
+BIN <- hetglm(I(rain > 0) ~ ensmean | log(enssd), data = RainIbk,
+               family = binomial(link = "logit"))
+TRCH <- crch(rain~ensmean | log(enssd), data = RainIbk, subset = rain > 0,
+                 left = 0, dist = "logistic", truncated = TRUE)
+cbind("CRCH" = c(coef(CRCH, "location")/exp(coef(CRCH, "scale"))[1],
+                    coef(CRCH, "scale")[2]),
+          "BIN" = coef(BIN),
+          "TRCH" = c(coef(TRCH, "location")/exp(coef(TRCH, "scale"))[1],
+                      coef(TRCH, "scale")[2]))
+loglik <- c("Censored" = logLik(CRCH), "Two-Part" = logLik(BIN) + logLik(TRCH))
+df <- c(4, 7)
+aic <- -2 * loglik + 2 * df
+bic <- -2 * loglik + log(nrow(RainIbk)) * df
+cbind(df, AIC = aic, BIC = bic)
+newdata <- data.frame(ensmean = 1.8, enssd = 0.9)
+predict(CRCH, newdata, type = "quantile", at = 0.5)^2
+p <- predict(BIN, newdata)
+p
+predict(TRCH, newdata, type = "quantile", at = (p - 0.5)/p)^2
+mu <- predict(CRCH, newdata, type = "location")
+mu
+sigma <- predict(CRCH, newdata, type = "scale")
+sigma
+pclogis(sqrt(5), mu, sigma, lower.tail = FALSE, left = 0)
+mu <- predict(TRCH, newdata, type = "location")
+mu
+sigma <- predict(TRCH, newdata, type = "scale")
+sigma
+p * ptlogis(sqrt(5), mu, sigma, lower.tail = FALSE, left = 0)
